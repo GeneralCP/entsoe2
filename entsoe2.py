@@ -8,7 +8,9 @@ from datetime import datetime, timedelta, timezone
 from urllib.request import urlopen
 from xml.etree import ElementTree
 import pandas as pd
+import ssl
 
+ssl._create_default_https_context = ssl._create_unverified_context
 
 def get_dayahead_prices(api_key: str, area_code: str, start: datetime = None, end: datetime = None, df=0, tz='UTC'):
     """
@@ -38,13 +40,14 @@ def get_dayahead_prices(api_key: str, area_code: str, start: datetime = None, en
     # GET /api?documentType=A44&in_Domain=10YCZ-CEPS-----N&out_Domain=10YCZ-CEPS-----N&periodStart=201512312300&periodEnd=201612312300
     url = f'https://web-api.tp.entsoe.eu/api?securityToken={api_key}&documentType=A44&in_Domain={area_code}' \
           f'&out_Domain={area_code}&periodStart={start.strftime(fmt)}&periodEnd={end.strftime(fmt)}'
-
+    print(url)
     with urlopen(url) as response:  # Raises URLError
         if response.status != 200:
             raise Exception(f"{response.status=}")
         xml_str = response.read().decode()
 
     result = {}
+    prevpos=-10
     for child in ElementTree.fromstring(xml_str):
         if child.tag.endswith("TimeSeries"):  # endswith to ignore namespace
             for ts_child in child:
@@ -60,6 +63,10 @@ def get_dayahead_prices(api_key: str, area_code: str, start: datetime = None, en
                                 if po_child.tag.endswith("position"):
                                     delta = int(po_child.text) - 1  # 1...24 to zero-indexed
                                     time = start_time + timedelta(hours=delta)
+                                    if delta - prevpos == 2:
+                                        time2 = start_time + timedelta(hours=(delta-1))
+                                        result[time2] = price
+                                    prevpos=delta
                                 elif po_child.tag.endswith("price.amount"):
                                     price = float(po_child.text)
                                     result[time] = price

@@ -12,7 +12,7 @@ import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
-def get_dayahead_prices(api_key: str, area_code: str, start: datetime = None, end: datetime = None, df=0, tz='UTC'):
+def get_dayahead_prices(api_key: str, area_code: str, start: datetime = None, end: datetime = None, df=0, tz='UTC', interval='60M'):
     """
     Get https://transparency.entsoe.eu/content/static_content/Static%20content/web%20api/Guide.html 4.2.10. Day Ahead Prices [12.1.D]
     * One year range limit applies
@@ -58,18 +58,51 @@ def get_dayahead_prices(api_key: str, area_code: str, start: datetime = None, en
                                 if ti_child.tag.endswith("start"):
                                     # There's no canonical way to parse ISO formatted dates. datetime.fromisoformat doesn't work. This works.
                                     start_time = datetime.strptime(ti_child.text, '%Y-%m-%dT%H:%MZ').replace(tzinfo=timezone.utc)
-                        elif pe_child.tag.endswith("Point"):
-                            for po_child in pe_child:
-                                if po_child.tag.endswith("position"):
-                                    delta = int(po_child.text) - 1  # 1...24 to zero-indexed
-                                    time = start_time + timedelta(hours=delta)
-                                    if delta - prevpos == 2:
-                                        time2 = start_time + timedelta(hours=(delta-1))
-                                        result[time2] = price
-                                    prevpos=delta
-                                elif po_child.tag.endswith("price.amount"):
-                                    price = float(po_child.text)
-                                    result[time] = price
+                        if pe_child.tag.endswith("resolution"):
+                            if pe_child.text=="PT60M":
+                                interval2='60M'
+                            elif pe_child.text=="PT15M":
+                                interval2='15M'
+                            elif pe_child.text=="PT30M":
+                                interval2='30M'
+                        if pe_child.tag.endswith("Point"):
+                            if interval2 == '60M' and interval=='60M':
+                                for po_child in pe_child:
+                                    if po_child.tag.endswith("position"):
+                                        delta = int(po_child.text) - 1  # 1...24 to zero-indexed
+                                        time = start_time + timedelta(hours=delta)
+                                        if delta - prevpos == 2:
+                                            time2 = start_time + timedelta(hours=(delta-1))
+                                            result[time2] = price
+                                        prevpos=delta
+                                    elif po_child.tag.endswith("price.amount"):
+                                        price = float(po_child.text)
+                                        result[time] = price
+                            if interval2 == '15M' and interval=='15M':                       
+                                for po_child in pe_child:
+                                    if po_child.tag.endswith("position"):
+                                        delta = int(po_child.text) - 1  # 1...24 to zero-indexed
+                                        time = start_time + timedelta(minutes=delta*15)
+                                        if delta - prevpos == 2:
+                                            time2 = start_time + timedelta(minutes=(delta-1)*15)
+                                            result[time2] = price
+                                        prevpos=delta
+                                    elif po_child.tag.endswith("price.amount"):
+                                        price = float(po_child.text)
+                                        result[time] = price   
+                            if interval2 == '30M' and interval=='30M':                       
+                                for po_child in pe_child:
+                                    if po_child.tag.endswith("position"):
+                                        delta = int(po_child.text) - 1  # 1...24 to zero-indexed
+                                        time = start_time + timedelta(minutes=delta*30)
+                                        if delta - prevpos == 2:
+                                            time2 = start_time + timedelta(minutes=(delta-1)*30)
+                                            result[time2] = price
+                                        prevpos=delta
+                                    elif po_child.tag.endswith("price.amount"):
+                                        price = float(po_child.text)
+                                        result[time] = price                             
+
 
     if df==1:
         result = pd.Series(result).tz_convert(tz)
